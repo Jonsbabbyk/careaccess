@@ -23,11 +23,10 @@
 
 ## 🖥️ Tech Stack
 
-- **Frontend**: HTML, CSS, JavaScript
+- **Frontend**: HTML, CSS, JavaScript,typescript
 - **Voice**: Web Speech API (SpeechRecognition + SpeechSynthesis)
-- **3D Design**: [Spline](https://spline.design/)
 - **Version Control**: Git + GitHub
-- **Optional Integration**: Bolt AI
+
 
 ---
 
@@ -36,7 +35,7 @@
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Jonsbabbyk/careaccess.git
-cd careaccess
+
 
 # 2. Install dependencies
 npm install
