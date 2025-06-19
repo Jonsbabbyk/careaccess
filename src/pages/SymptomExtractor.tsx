@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, VolumeX, Search, HelpCircle } from 'lucide-react';
+import { Mic, VolumeX, Search, HelpCircle, CheckCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import BodyDiagram from '../components/SymptomTool/BodyDiagram';
 import { analyzeSymptoms } from '../utils/symptomAnalyzer';
@@ -12,6 +12,7 @@ const SymptomExtractor: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [results, setResults] = useState<{ condition: string; probability: string; advice: string }[]>([]);
   const [showHelp, setShowHelp] = useState(false);
+  const [voiceInputSuccess, setVoiceInputSuccess] = useState(false);
 
   const handleAddSymptom = (symptom: string) => {
     if (symptom.trim() !== '' && !symptoms.includes(symptom.trim())) {
@@ -27,14 +28,62 @@ const SymptomExtractor: React.FC = () => {
   };
 
   const toggleRecording = () => {
-    // In a real app, this would use the Web Speech API
-    setIsRecording(!isRecording);
     if (isRecording) {
-      // Simulate speech recognition result
-      setTimeout(() => {
-        handleAddSymptom('headache');
+      // Stop recording
+      setIsRecording(false);
+      return;
+    }
+
+    // Start recording
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      setIsRecording(true);
+      
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        handleAddSymptom(transcript);
         setIsRecording(false);
-      }, 1500);
+        setVoiceInputSuccess(true);
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => setVoiceInputSuccess(false), 3000);
+      };
+      
+      recognition.onerror = (event) => {
+        setIsRecording(false);
+        console.error('Speech recognition error:', event.error);
+        
+        let errorMessage = 'Voice recognition failed. Please try again or type your symptom.';
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings and try again.';
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'No speech detected. Please speak clearly and try again.';
+        } else if (event.error === 'network') {
+          errorMessage = 'Network error occurred. Please check your connection and try again.';
+        }
+        
+        alert(errorMessage);
+      };
+      
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+      
+      try {
+        recognition.start();
+      } catch (error) {
+        setIsRecording(false);
+        alert('Failed to start voice recognition. Please ensure your browser supports this feature and try again.');
+      }
+    } else {
+      // Fallback for browsers without speech recognition
+      alert('Voice input is not supported in your browser. Please type your symptom or try using a different browser like Chrome, Edge, or Safari.');
     }
   };
 
@@ -151,12 +200,21 @@ const SymptomExtractor: React.FC = () => {
 
           {inputMethod === 'voice' && (
             <div className="text-center">
+              {voiceInputSuccess && (
+                <div className={`mb-4 p-3 rounded-lg flex items-center justify-center ${
+                  theme === 'high-contrast' ? 'bg-white text-black' : 'bg-green-100 text-green-800'
+                }`}>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  <span className="font-medium">✅ Voice input received successfully!</span>
+                </div>
+              )}
+              
               <button
                 onClick={toggleRecording}
-                className={`p-6 rounded-full mb-4 ${
+                className={`p-6 rounded-full mb-4 transition-colors ${
                   isRecording 
                     ? (theme === 'high-contrast' ? 'bg-white text-black animate-pulse' : 'bg-red-500 text-white animate-pulse') 
-                    : (theme === 'high-contrast' ? 'bg-white text-black' : 'bg-teal-600 text-white')
+                    : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
                 }`}
                 aria-label={isRecording ? "Stop recording" : "Start recording"}
               >
@@ -194,7 +252,7 @@ const SymptomExtractor: React.FC = () => {
                   <span>{symptom}</span>
                   <button
                     onClick={() => handleRemoveSymptom(index)}
-                    className="ml-2 text-sm rounded-full w-5 h-5 flex items-center justify-center"
+                    className="ml-2 text-sm rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-200"
                     aria-label={`Remove ${symptom}`}
                   >
                     ×

@@ -20,8 +20,14 @@ const AskDoctor: React.FC = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [voiceInputSuccess, setVoiceInputSuccess] = useState(false);
   const [showSamples, setShowSamples] = useState(true);
+  const [isMuted, setIsMuted] = useState(() => {
+    // Load mute state from localStorage
+    const saved = localStorage.getItem('askDoctor_muted');
+    return saved ? JSON.parse(saved) : false;
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const sampleQuestions = getSampleQuestions();
   const keywordSuggestions = getKeywordSuggestions();
@@ -47,6 +53,11 @@ const AskDoctor: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [voiceInputSuccess]);
+
+  // Save mute state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('askDoctor_muted', JSON.stringify(isMuted));
+  }, [isMuted]);
 
   const startVoiceInput = () => {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
@@ -74,17 +85,32 @@ const AskDoctor: React.FC = () => {
       recognition.onerror = (event) => {
         setIsRecording(false);
         console.error('Speech recognition error:', event.error);
-        alert('Voice recognition failed. Please try again or type your question.');
+        
+        let errorMessage = 'Voice recognition failed. Please try again or type your question.';
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings and try again.';
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'No speech detected. Please speak clearly and try again.';
+        } else if (event.error === 'network') {
+          errorMessage = 'Network error occurred. Please check your connection and try again.';
+        }
+        
+        alert(errorMessage);
       };
       
       recognition.onend = () => {
         setIsRecording(false);
       };
       
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (error) {
+        setIsRecording(false);
+        alert('Failed to start voice recognition. Please ensure your browser supports this feature and try again.');
+      }
     } else {
       // Fallback for browsers without speech recognition
-      alert('Voice input is not supported in your browser. Please type your question or try using a different browser.');
+      alert('Voice input is not supported in your browser. Please type your question or try using a different browser like Chrome, Edge, or Safari.');
     }
   };
 
@@ -126,8 +152,10 @@ const AskDoctor: React.FC = () => {
       // Save new question-answer pair for learning
       saveNewQuestion(userMessage.content, doctorResponse);
       
-      // Speak the response
-      speakText(doctorResponse);
+      // Speak the response if not muted
+      if (!isMuted) {
+        speakText(doctorResponse);
+      }
       
     } catch (error) {
       console.error('Error processing message:', error);
@@ -182,7 +210,7 @@ const AskDoctor: React.FC = () => {
   };
 
   const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
+    if ('speechSynthesis' in window && !isMuted) {
       // Stop any currently speaking text
       window.speechSynthesis.cancel();
       
@@ -202,7 +230,29 @@ const AskDoctor: React.FC = () => {
         utterance.voice = preferredVoice;
       }
       
+      // Store reference to current utterance
+      currentUtteranceRef.current = utterance;
+      
+      utterance.onend = () => {
+        currentUtteranceRef.current = null;
+      };
+      
+      utterance.onerror = () => {
+        currentUtteranceRef.current = null;
+      };
+      
       window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const toggleMute = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    
+    // If muting, stop any current speech
+    if (newMutedState && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      currentUtteranceRef.current = null;
     }
   };
 
@@ -246,11 +296,26 @@ const AskDoctor: React.FC = () => {
             }`}>
               Virtual Health Assistant for Disability-Related Questions
             </p>
-            <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : theme === 'high-contrast' ? 'text-gray-300' : 'text-gray-500'
-            }`}>
-              Status: {isOnline ? '🟢 Online' : '🔴 Offline'} | All conversations are private and secure
-            </p>
+            <div className="flex items-center gap-4">
+              <p className={`text-sm ${
+                theme === 'dark' ? 'text-gray-400' : theme === 'high-contrast' ? 'text-gray-300' : 'text-gray-500'
+              }`}>
+                Status: {isOnline ? '🟢 Online' : '🔴 Offline'} | All conversations are private and secure
+              </p>
+              <button
+                onClick={toggleMute}
+                className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
+                  theme === 'high-contrast' 
+                    ? 'bg-white text-black hover:bg-gray-200' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                aria-label={isMuted ? "Unmute voice responses" : "Mute voice responses"}
+                aria-pressed={isMuted}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                <span>{isMuted ? 'Muted' : 'Voice On'}</span>
+              </button>
+            </div>
           </div>
         </div>
         <button 
@@ -278,7 +343,7 @@ const AskDoctor: React.FC = () => {
               <li>Use keyword suggestions to help form your questions</li>
             </ul>
             <ul className="list-disc list-inside space-y-2">
-              <li>All responses are automatically read aloud</li>
+              <li>All responses are automatically read aloud (unless muted)</li>
               <li>Works both online and offline</li>
               <li>Your conversations help improve the system</li>
               <li>Always consult healthcare providers for medical decisions</li>
@@ -345,12 +410,17 @@ const AskDoctor: React.FC = () => {
                           </div>
                           <button
                             onClick={() => speakText(message.content)}
-                            className={`p-2 rounded-full ${
+                            className={`p-2 rounded-full transition-colors ${
                               theme === 'high-contrast' ? 'hover:bg-gray-700' : 'hover:bg-gray-200'
                             }`}
                             aria-label="Play audio of this response"
+                            disabled={isMuted}
                           >
-                            <Volume2 className="w-4 h-4" />
+                            {isMuted ? (
+                              <VolumeX className="w-4 h-4" />
+                            ) : (
+                              <Volume2 className="w-4 h-4" />
+                            )}
                           </button>
                         </div>
                       )}
@@ -423,10 +493,10 @@ const AskDoctor: React.FC = () => {
                 <button
                   onClick={startVoiceInput}
                   disabled={isRecording || isProcessing}
-                  className={`p-4 rounded-md text-xl ${
+                  className={`p-4 rounded-md text-xl transition-colors ${
                     isRecording
                       ? (theme === 'high-contrast' ? 'bg-white text-black animate-pulse' : 'bg-red-500 text-white animate-pulse')
-                      : (theme === 'high-contrast' ? 'bg-white text-black' : 'bg-teal-600 text-white hover:bg-teal-700')
+                      : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
                   } disabled:opacity-50`}
                   aria-label={isRecording ? "Recording your voice..." : "Click to use voice input"}
                 >
@@ -439,10 +509,10 @@ const AskDoctor: React.FC = () => {
                 <button
                   onClick={handleSendMessage}
                   disabled={!inputText.trim() || isProcessing}
-                  className={`p-4 rounded-md text-xl ${
+                  className={`p-4 rounded-md text-xl transition-colors ${
                     !inputText.trim() || isProcessing
                       ? (theme === 'high-contrast' ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-300 text-gray-500 cursor-not-allowed')
-                      : (theme === 'high-contrast' ? 'bg-white text-black' : 'bg-teal-600 text-white hover:bg-teal-700')
+                      : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
                   }`}
                   aria-label="Send your message"
                 >
@@ -529,7 +599,7 @@ const AskDoctor: React.FC = () => {
               theme === 'dark' ? 'text-gray-300' : theme === 'high-contrast' ? 'text-gray-200' : 'text-gray-600'
             }`}>
               <li>🎤 Voice input for hands-free typing</li>
-              <li>🔊 Automatic audio responses</li>
+              <li>🔊 Automatic audio responses (with mute option)</li>
               <li>🔍 High contrast mode available</li>
               <li>⌨️ Full keyboard navigation</li>
               <li>📱 Mobile-friendly interface</li>

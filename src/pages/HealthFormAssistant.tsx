@@ -98,7 +98,17 @@ const HealthFormAssistant: React.FC = () => {
         setIsRecording(false);
         setCurrentFieldId(null);
         console.error('Speech recognition error:', event.error);
-        alert('Voice input failed. Please try again or type your response.');
+        
+        let errorMessage = 'Voice input failed. Please try again or type your response.';
+        if (event.error === 'not-allowed') {
+          errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings and try again.';
+        } else if (event.error === 'no-speech') {
+          errorMessage = 'No speech detected. Please speak clearly and try again.';
+        } else if (event.error === 'network') {
+          errorMessage = 'Network error occurred. Please check your connection and try again.';
+        }
+        
+        alert(errorMessage);
       };
       
       recognition.onend = () => {
@@ -106,9 +116,15 @@ const HealthFormAssistant: React.FC = () => {
         setCurrentFieldId(null);
       };
       
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (error) {
+        setIsRecording(false);
+        setCurrentFieldId(null);
+        alert('Failed to start voice recognition. Please ensure your browser supports this feature and try again.');
+      }
     } else {
-      alert('Voice input is not supported in your browser. Please type your response or try using a different browser.');
+      alert('Voice input is not supported in your browser. Please type your response or try using a different browser like Chrome, Edge, or Safari.');
     }
   };
 
@@ -183,7 +199,7 @@ const HealthFormAssistant: React.FC = () => {
               />
               <button
                 onClick={() => startVoiceInput(field.id)}
-                className={`px-6 py-4 rounded-r-md flex items-center justify-center text-lg ${
+                className={`px-6 py-4 rounded-r-md flex items-center justify-center text-lg transition-colors ${
                   isRecording && currentFieldId === field.id
                     ? (theme === 'high-contrast' ? 'bg-white text-black animate-pulse' : 'bg-red-500 text-white animate-pulse')
                     : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
