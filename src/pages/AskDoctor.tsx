@@ -28,6 +28,7 @@ const AskDoctor: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const sampleQuestions = getSampleQuestions();
   const keywordSuggestions = getKeywordSuggestions();
@@ -40,6 +41,14 @@ const AskDoctor: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnlineStatus);
       window.removeEventListener('offline', handleOnlineStatus);
+      // Clean up speech recognition
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      // Clean up speech synthesis
+      if (currentUtteranceRef.current) {
+        window.speechSynthesis.cancel();
+      }
     };
   }, []);
 
@@ -60,21 +69,46 @@ const AskDoctor: React.FC = () => {
   }, [isMuted]);
 
   const startVoiceInput = () => {
+    // Stop any existing recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       setIsRecording(true);
       
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
       
       recognition.continuous = false;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
       
+      recognition.onstart = () => {
+        console.log('Voice recognition started');
+      };
+      
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
-        setInputText(transcript);
+        console.log('Voice input received:', transcript);
+        
+        // Append to existing text or replace based on user preference
+        if (inputText.trim()) {
+          const shouldAppend = confirm(`Current text: "${inputText}"\n\nDo you want to add the new text to your existing question?\n\nClick OK to add, Cancel to replace.`);
+          if (shouldAppend) {
+            setInputText(prev => `${prev} ${transcript}`);
+          } else {
+            setInputText(transcript);
+          }
+        } else {
+          setInputText(transcript);
+        }
+        
         setIsRecording(false);
         setVoiceInputSuccess(true);
+        recognitionRef.current = null;
         
         // Focus back to textarea for accessibility
         if (textareaRef.current) {
@@ -83,8 +117,9 @@ const AskDoctor: React.FC = () => {
       };
       
       recognition.onerror = (event) => {
-        setIsRecording(false);
         console.error('Speech recognition error:', event.error);
+        setIsRecording(false);
+        recognitionRef.current = null;
         
         let errorMessage = 'Voice recognition failed. Please try again or type your question.';
         if (event.error === 'not-allowed') {
@@ -93,25 +128,41 @@ const AskDoctor: React.FC = () => {
           errorMessage = 'No speech detected. Please speak clearly and try again.';
         } else if (event.error === 'network') {
           errorMessage = 'Network error occurred. Please check your connection and try again.';
+        } else if (event.error === 'audio-capture') {
+          errorMessage = 'No microphone found. Please ensure a microphone is connected and try again.';
+        } else if (event.error === 'aborted') {
+          errorMessage = 'Voice input was cancelled.';
         }
         
         alert(errorMessage);
       };
       
       recognition.onend = () => {
+        console.log('Voice recognition ended');
         setIsRecording(false);
+        recognitionRef.current = null;
       };
       
       try {
         recognition.start();
       } catch (error) {
+        console.error('Failed to start recognition:', error);
         setIsRecording(false);
+        recognitionRef.current = null;
         alert('Failed to start voice recognition. Please ensure your browser supports this feature and try again.');
       }
     } else {
       // Fallback for browsers without speech recognition
       alert('Voice input is not supported in your browser. Please type your question or try using a different browser like Chrome, Edge, or Safari.');
     }
+  };
+
+  const stopVoiceInput = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsRecording(false);
   };
 
   const handleSendMessage = async () => {
@@ -239,6 +290,7 @@ const AskDoctor: React.FC = () => {
       
       utterance.onerror = () => {
         currentUtteranceRef.current = null;
+        console.error('Speech synthesis error');
       };
       
       window.speechSynthesis.speak(utterance);
@@ -491,14 +543,20 @@ const AskDoctor: React.FC = () => {
               />
               <div className="flex flex-col space-y-3">
                 <button
-                  onClick={startVoiceInput}
-                  disabled={isRecording || isProcessing}
+                  onClick={() => {
+                    if (isRecording) {
+                      stopVoiceInput();
+                    } else {
+                      startVoiceInput();
+                    }
+                  }}
+                  disabled={isProcessing}
                   className={`p-4 rounded-md text-xl transition-colors ${
                     isRecording
                       ? (theme === 'high-contrast' ? 'bg-white text-black animate-pulse' : 'bg-red-500 text-white animate-pulse')
                       : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
                   } disabled:opacity-50`}
-                  aria-label={isRecording ? "Recording your voice..." : "Click to use voice input"}
+                  aria-label={isRecording ? "Stop recording your voice..." : "Click to use voice input"}
                 >
                   {isRecording ? (
                     <VolumeX className="w-8 h-8" />

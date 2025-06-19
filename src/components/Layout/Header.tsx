@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Heart, FileText, Pill, User, Moon, Sun, Menu, X } from 'lucide-react';
+import { Heart, FileText, Pill, User, Moon, Sun, Menu, X, MapPin, Bot } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -13,6 +13,8 @@ const Header: React.FC = () => {
     { name: 'Health Forms', path: '/health-form', icon: <FileText className="w-5 h-5" /> },
     { name: 'Medicine Helper', path: '/medicine-simplifier', icon: <Pill className="w-5 h-5" /> },
     { name: 'Ask Doctor', path: '/ask-doctor', icon: <User className="w-5 h-5" /> },
+    { name: 'Accessibility', path: '/accessibility', icon: <MapPin className="w-5 h-5" /> },
+    { name: 'AI Chat', path: '/ai-chat', icon: <Bot className="w-5 h-5" /> },
   ];
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
@@ -35,7 +37,7 @@ const Header: React.FC = () => {
           </Link>
           
           {/* Desktop navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
+          <nav className="hidden md:flex items-center space-x-6">
             {navigation.map((item) => (
               <Link
                 key={item.path}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, FileText, Pill, User, ExternalLink } from 'lucide-react';
+import { Heart, FileText, Pill, User, ExternalLink, MapPin, Bot } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 const Home: React.FC = () => {
@@ -34,6 +34,20 @@ const Home: React.FC = () => {
       icon: <User className="w-10 h-10" />,
       path: '/ask-doctor',
       color: theme === 'high-contrast' ? 'bg-white text-black' : 'bg-purple-100 text-purple-600',
+    },
+    {
+      title: 'Accessibility & Location',
+      description: 'Find your location with real-time GPS detection and access nearby healthcare services.',
+      icon: <MapPin className="w-10 h-10" />,
+      path: '/accessibility',
+      color: theme === 'high-contrast' ? 'bg-white text-black' : 'bg-teal-100 text-teal-600',
+    },
+    {
+      title: 'AI Chat Assistant',
+      description: 'Chat with our offline AI assistant for health conversations without needing internet connection.',
+      icon: <Bot className="w-10 h-10" />,
+      path: '/ai-chat',
+      color: theme === 'high-contrast' ? 'bg-white text-black' : 'bg-indigo-100 text-indigo-600',
     },
   ];
 
@@ -73,7 +87,7 @@ const Home: React.FC = () => {
       
       <section id="features" className="mb-16">
         <h2 className="text-3xl font-bold mb-8 text-center">Our Tools</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature) => (
             <Link
               key={feature.title}

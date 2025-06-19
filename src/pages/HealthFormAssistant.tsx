@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Save, FileText, HelpCircle, ArrowLeft, ArrowRight, Mic, VolumeX, CheckCircle } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { generatePDF } from '../utils/pdfGenerator';
@@ -20,6 +20,7 @@ const HealthFormAssistant: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [currentFieldId, setCurrentFieldId] = useState<string | null>(null);
   const [voiceInputSuccess, setVoiceInputSuccess] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [formData, setFormData] = useState<{ [key: string]: FormField[] }>({
     personalInfo: [
       { id: 'fullName', label: 'Full Name', type: 'text', required: true, value: '' },
@@ -72,32 +73,62 @@ const HealthFormAssistant: React.FC = () => {
   };
 
   const startVoiceInput = (fieldId: string) => {
+    // Stop any existing recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
       setIsRecording(true);
       setCurrentFieldId(fieldId);
       
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
       
       recognition.continuous = false;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
       
+      recognition.onstart = () => {
+        console.log('Voice recognition started');
+      };
+      
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
-        handleInputChange(fieldId, transcript);
+        console.log('Voice input received:', transcript);
+        
+        // Get current field value and append or replace based on field type
+        const currentField = currentFields.find(field => field.id === fieldId);
+        if (currentField) {
+          let newValue = transcript;
+          
+          // For text fields, if there's existing content, ask user if they want to append or replace
+          if (currentField.type === 'text' && currentField.value && typeof currentField.value === 'string') {
+            const shouldAppend = confirm(`Current text: "${currentField.value}"\n\nDo you want to add the new text to the existing text?\n\nClick OK to add, Cancel to replace.`);
+            if (shouldAppend) {
+              newValue = `${currentField.value} ${transcript}`;
+            }
+          }
+          
+          handleInputChange(fieldId, newValue);
+        }
+        
         setIsRecording(false);
         setCurrentFieldId(null);
         setVoiceInputSuccess(fieldId);
+        recognitionRef.current = null;
         
         // Clear success message after 3 seconds
         setTimeout(() => setVoiceInputSuccess(null), 3000);
       };
       
       recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
         setIsRecording(false);
         setCurrentFieldId(null);
-        console.error('Speech recognition error:', event.error);
+        recognitionRef.current = null;
         
         let errorMessage = 'Voice input failed. Please try again or type your response.';
         if (event.error === 'not-allowed') {
@@ -106,26 +137,43 @@ const HealthFormAssistant: React.FC = () => {
           errorMessage = 'No speech detected. Please speak clearly and try again.';
         } else if (event.error === 'network') {
           errorMessage = 'Network error occurred. Please check your connection and try again.';
+        } else if (event.error === 'audio-capture') {
+          errorMessage = 'No microphone found. Please ensure a microphone is connected and try again.';
+        } else if (event.error === 'aborted') {
+          errorMessage = 'Voice input was cancelled.';
         }
         
         alert(errorMessage);
       };
       
       recognition.onend = () => {
+        console.log('Voice recognition ended');
         setIsRecording(false);
         setCurrentFieldId(null);
+        recognitionRef.current = null;
       };
       
       try {
         recognition.start();
       } catch (error) {
+        console.error('Failed to start recognition:', error);
         setIsRecording(false);
         setCurrentFieldId(null);
+        recognitionRef.current = null;
         alert('Failed to start voice recognition. Please ensure your browser supports this feature and try again.');
       }
     } else {
       alert('Voice input is not supported in your browser. Please type your response or try using a different browser like Chrome, Edge, or Safari.');
     }
+  };
+
+  const stopVoiceInput = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsRecording(false);
+    setCurrentFieldId(null);
   };
 
   const handleCheckboxChange = (fieldId: string, option: string, checked: boolean) => {
@@ -198,14 +246,20 @@ const HealthFormAssistant: React.FC = () => {
                 aria-label={field.label}
               />
               <button
-                onClick={() => startVoiceInput(field.id)}
+                onClick={() => {
+                  if (isRecording && currentFieldId === field.id) {
+                    stopVoiceInput();
+                  } else {
+                    startVoiceInput(field.id);
+                  }
+                }}
                 className={`px-6 py-4 rounded-r-md flex items-center justify-center text-lg transition-colors ${
                   isRecording && currentFieldId === field.id
                     ? (theme === 'high-contrast' ? 'bg-white text-black animate-pulse' : 'bg-red-500 text-white animate-pulse')
                     : (theme === 'high-contrast' ? 'bg-white text-black hover:bg-gray-200' : 'bg-teal-600 text-white hover:bg-teal-700')
                 }`}
-                aria-label={`Use voice input for ${field.label}`}
-                disabled={isRecording && currentFieldId !== field.id}
+                aria-label={`${isRecording && currentFieldId === field.id ? 'Stop' : 'Start'} voice input for ${field.label}`}
+                type="button"
               >
                 {isRecording && currentFieldId === field.id ? (
                   <VolumeX className="w-6 h-6" />
